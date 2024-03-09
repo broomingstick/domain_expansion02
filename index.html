@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- 문서의 문자 인코딩 설정 -->
+    <meta charset="UTF-8">
+    <!-- 반응형 웹 디자인을 위한 viewport 설정 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 페이지 제목 -->
+    <title>Teachable Machine Image Model</title>
+    <!-- 페이지 스타일(css) 작성 -->
+    <style>
+        /* 전체 body에 적용되는 스타일 */
+        body {
+            font-family: 'Arial Black', sans-serif; /* 글꼴 설정 */
+            background-color: #f1f1f1; /* 배경색 설정 */
+            color: #000; /* 글자색 설정 */
+            margin: 0; /* 바깥 여백 제거 */
+            padding: 20px; /* 안쪽 여백 설정 */
+            box-sizing: border-box; /* 상자 크기 지정 */
+            display: flex; /* Flexbox를 사용하여 요소 배치 */
+            flex-direction: column; /* 세로 방향으로 요소 배치 */
+            align-items: center; /* 요소들을 가운데 정렬 */
+            justify-content: center; /* 요소들을 중앙 정렬 */
+            height: 100vh; /* 화면 높이의 100%로 설정 */
+            position: relative;
+        }
+
+        /* 로고 이미지 스타일 */
+        #logo {
+            position: fixed; /* 페이지 스크롤에 따라 고정되도록 설정 */
+            top: 0; /* 페이지 상단에 배치 */
+            max-width: 300px; /* 최대 너비 설정 */
+            z-index: 1; /* 로고가 위에 나타나도록 설정 */
+        }
+
+        /* 웹캠 컨테이너 스타일 */
+        #webcam-container {
+            margin-top: 20px; /* 위쪽 여백 설정 */
+            text-align: center; /* 가운데 정렬 */
+        }
+        
+        /* 컨텐츠 컨테이너 스타일 */
+        #content-container {
+            margin-top: 40px; /* 로고 이미지 바로 아래에 붙도록 여백 조정 */
+            text-align: center; /* 가운데 정렬 */
+            position: absolute; /* 절대 위치 설정 */
+            top: 100px; /* 로고 이미지 바로 아래에 위치하도록 조정 */
+            left: 50%; /* 가운데 정렬을 위해 왼쪽 여백을 50%로 설정 */
+            transform: translateX(-50%); /* 가운데 정렬을 위해 이동 */
+            z-index: 2; /* 레이블이 로고 위에 나타나도록 설정 */
+        }
+        
+        /* 컨텐츠 컨테이너 내부 div 스타일 */
+        #content-container div {
+            margin-bottom: 10px; /* 아래쪽 여백 설정 */
+        }
+        
+        /* 버튼 스타일 */
+        button {
+            background-color: #000; /* 배경색 설정 */
+            color: #fff; /* 글자색 설정 */
+            border: none; /* 테두리 없음 */
+            padding: 10px 20px; /* 안쪽 여백 설정 */
+            cursor: pointer; /* 마우스 커서를 포인터로 변경 */
+            font-family: 'Courier New', Courier, monospace; /* 글꼴 설정 */
+            font-size: 16px; /* 글자 크기 설정 */
+            margin-bottom: 20px; /* 아래쪽 여백 설정 */
+        }
+        
+        /* 버튼에 마우스 호버 시 스타일 */
+        button:hover {
+            background-color: #333; /* 배경색 변경 */
+        }
+
+        /* 설명 컨테이너 스타일 */
+        #explain-container {
+            margin-top: 20px; /* 위쪽 여백 설정 */
+            text-align: center; /* 가운데 정렬 */
+        }
+   
+    </style>
+</head>
+<body>
+    <!-- 로고 이미지 -->
+    <img id="logo" src="자료_1.png" alt="로고 이미지">
+
+    <!-- 컨텐츠 컨테이너 -->
+    <div id="content-container">
+        <!-- 영역 전개 텍스트 -->
+        <div id="area-label" style="font-size: 28px; font-weight: bold;">영역 전개(領域展開)</div>
+        <!-- Start 버튼 -->
+        <button id="startButton" type="button" onclick="init()">始作</button>
+    </div>
+
+    <!-- 웹캠 컨테이너 -->
+    <div id="webcam-container"></div>
+
+    <!-- 레이블 컨테이너 -->
+    <div id="label-container" style="text-align: center;"></div>
+
+    <!-- 설명 컨테이너 -->
+    <div id="explain-container" style="text-align: center;"></div>
+
+    <!-- 다시 시작 버튼 -->
+    <button id="restartButton" style="position: fixed; bottom: 20px; right: 20px; padding: 10px 20px; font-size: 16px;">再開</button>
+
+    <!-- TensorFlow 및 Teachable Machine Image 스크립트 -->
+    <!-- TensorFlow 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <!-- Teachable Machine Image 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <!-- 자바스크립트 코드 -->
+    <script type="text/javascript">
+        // Teachable Machine 모델의 URL
+        const URL = "./my_model/";
+
+        let model, webcam, labelContainer, maxPredictions;
+        let audioPlaying = false;
+        let audio;
+        let currentAudioClass = ''; // 변수 초기화
+        let explainContainer;
+
+        // 웹페이지가 로드되면 실행되는 함수
+        async function init() {
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            // Teachable Machine 모델 로드
+            model = await tmImage.load(modelURL, metadataURL);
+            maxPredictions = model.getTotalClasses();
+
+            const flip = true;
+            webcam = new tmImage.Webcam(200, 200, flip);
+            await webcam.setup();
+            await webcam.play();
+            window.requestAnimationFrame(loop);
+
+            // 웹캠을 웹페이지에 추가
+            document.getElementById("webcam-container").appendChild(webcam.canvas);
+            labelContainer = document.getElementById("label-container");
+            for (let i = 0; i < maxPredictions; i++) {
+                const labelDiv = document.createElement("div");
+                labelDiv.style.fontWeight = "bold";
+                labelContainer.appendChild(labelDiv);
+            }
+
+            // Start 버튼 숨기기
+            document.getElementById("startButton").style.display = "none";
+
+            // 설명을 웹캠 하단에 추가
+            explainContainer = document.getElementById("explain-container");
+            for (let i = 0; i < maxPredictions; i++) {
+                const labelDiv2 = document.createElement("div");
+                explainContainer.appendChild(labelDiv2);
+            }
+        }
+
+        // 웹캠 프레임 업데이트 함수
+        async function loop() {
+            webcam.update();
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
+
+        webcamPaused = false;   // 웹캠 기능 초기 상태
+
+        // 예측 함수
+        async function predict() {
+            if (webcamPaused) return; // 웹캠 기능이 일시 정지되어 있으면 예측을 하지 않음
+
+            const prediction = await model.predict(webcam.canvas);
+            const maxIndex = prediction.reduce((maxIndex, prediction, currentIndex, predictions) => {
+                return prediction.probability > predictions[maxIndex].probability ? currentIndex : maxIndex;
+            }, 0);
+
+            if (prediction[maxIndex].probability.toFixed(2) >= 0.95) {
+                const currentClassName = prediction[maxIndex].className;
+                //레이블만 표기
+                switch (currentClassName) {
+                        case 'Malevolent shrine':
+                            labelContainer.childNodes[0].innerHTML = "영역 전개 : 복마어주자(伏魔御廚子)";
+                            break;
+                        case 'Infinite void':
+                            labelContainer.childNodes[0].innerHTML = "영역 전개 : 무량공처(無量空処)";
+                            break;
+                        case 'Chimera Shadow Garden':
+                            labelContainer.childNodes[0].innerHTML = "영역 전개 : 감합암예정(嵌合暗翳庭)";
+                            break;
+                        case 'Coffin of the Iron Mountain':
+                            labelContainer.childNodes[0].innerHTML = "영역 전개 : 개관철위산(蓋棺鉄囲山)";
+                            break;
+                        case 'Self-Embodiment of Perfection 01':
+                            labelContainer.childNodes[0].innerHTML = "영역 전개 : 자폐원돈과(自閉円頓裹)";
+                            break;    
+                        case 'Self-Embodiment of Perfection 02':
+                            labelContainer.childNodes[0].innerHTML = "영역 전개 : 자폐원돈과(自閉円頓裹)";
+                            break;    
+                        case 'Death Swarm':
+                            labelContainer.childNodes[0].innerHTML = "술식 해방 : 사루루용군(死累累湧軍)";
+                            break;
+                        case 'Mahoraga':
+                            labelContainer.childNodes[0].innerHTML = "팔악검 이계신장 마허라(八握剣 異戒神将 魔虚羅)";
+                            break;                        
+                        default:
+                            labelContainer.childNodes[0].innerHTML = "알맞은 장인(掌印)을 맺어 영역을 전개하세요!";
+                            break;
+                }
+                //오디오&비디오 재생
+                if (currentClassName !== currentAudioClass) {
+                    switch (currentClassName) {
+                        case 'Malevolent shrine':
+                            playVideoByClassName(currentClassName); // 비디오 재생 함수 호출
+                            currentAudioClass = currentClassName; // 현재 클래스를 저장
+                            break;
+                        case 'Infinite void':
+                            playAudioByClassName(currentClassName);
+                            currentAudioClass = currentClassName; // 현재 클래스를 저장
+                            break;
+                        case 'Chimera Shadow Garden':
+                            playAudioByClassName(currentClassName);
+                            currentAudioClass = currentClassName; // 현재 클래스를 저장
+                            break;
+                        case 'Coffin of the Iron Mountain':
+                            playAudioByClassName(currentClassName);
+                            currentAudioClass = currentClassName; // 현재 클래스를 저장
+                            break;
+                        case 'Self-Embodiment of Perfection 01':
+                            playAudioByClassName(currentClassName);
+                            currentAudioClass = currentClassName; // 현재 클래스를 저장
+                            break;    
+                        case 'Self-Embodiment of Perfection 02':
+                            playAudioByClassName(currentClassName);
+                            currentAudioClass = currentClassName; // 현재 클래스를 저장
+                            break;    
+                        case 'Death Swarm':
+                            playAudioByClassName(currentClassName); // 오디오 재생 함수 호출
+                            currentAudioClass = currentClassName; // 현재 클래스를 저장
+                            break;
+                        case 'Mahoraga':
+                            playAudioByClassName(currentClassName);
+                            currentAudioClass = currentClassName; // 현재 클래스를 저장
+                            break;                        
+                        default:
+                            break;
+                    }
+                    displayAudioLabel(currentClassName)
+                }
+            }
+        }
+
+        // 이 함수는 각 클래스에 대한 오디오를 재생합니다.
+        function playAudioByClassName(className) {
+            // 웹캠 기능 일시 정지
+            webcamPaused = true;
+            switch (className) {
+                case 'Malevolent shrine':
+                    playAudio('료멘스쿠나_완성본.mp3');
+                    break;
+                case 'Infinite void':
+                    playAudio('고죠 사토루_완성본.mp3');
+                    break;
+                case 'Chimera Shadow Garden':
+                    playAudio('후시구로 메구미_완성본.mp3');
+                    break;
+                case 'Coffin of the Iron Mountain':
+                    playAudio('죠고_완성본.mp3');
+                    break;
+                case 'Self-Embodiment of Perfection 01':
+                    playAudio('마히토_완성본1.mp3');
+                    break;
+                case 'Self-Embodiment of Perfection 02':
+                    playAudio('마히토_완성본2.mp3');
+                    break;
+                case 'Death Swarm':
+                    playAudio('다곤_완성본(사루루용군).mp3');
+                    break;
+                case 'Mahoraga':
+                    playAudio('후시구로 메구미_완성본(마허라).mp3');
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // 오디오 재생 함수 (한 번만 재생)
+        function playAudio(audioSrc) {
+            // 오디오 요소 생성
+            const audio = new Audio(audioSrc);
+            audio.autoplay = true;
+            audio.loop = false; // 반복 재생하지 않도록 설정
+            audio.muted = false; // 음소거 설정
+            audio.volume = 1; // 오디오 볼륨 조절 (0부터 1까지)
+            audio.play();
+
+            // 오디오 재생이 끝나면 웹캠 기능 재개
+            audio.addEventListener('ended', () => {
+                // 웹캠 기능 재개
+                webcamPaused = false;
+            });
+        }
+
+        // 이 함수는 각 클래스에 대한 비디오를 재생합니다.
+        function playVideoByClassName(className) {
+            // 로고 숨기기
+            document.getElementById('logo').style.display = 'none';
+            // 웹캠 숨기기 
+            document.getElementById('webcam-container').style.display = 'none';
+            // 웹캠 기능 일시 정지
+            webcamPaused = true;
+
+            switch (className) {
+                case 'Malevolent shrine':
+                    playVideo('료멘스쿠나_완성본0.mp4');
+                    break;
+                case 'Infinite void':
+                    playVideo('고죠 사토루_완성본0.mp4');
+                    break;
+                case 'Chimera Shadow Garden':
+                    playVideo('후시구로 메구미_완성본0.mp4');
+                    break;
+                case 'Coffin of the Iron Mountain':
+                    playVideo('죠고_완성본0.mp4');
+                    break;
+                case 'Self-Embodiment of Perfection 01':
+                    playVideo('마히토_완성본01.mp4');
+                    break;
+                case 'Self-Embodiment of Perfection 02':
+                    playVideo('마히토_완성본02.mp4');
+                    break;
+                case 'Death Swarm':
+                    playVideo('다곤_완성본(사루루용군)0.mp4');
+                    break;
+                case 'Mahoraga':
+                    playVideo('후시구로 메구미_완성본(마허라)0.mp4');
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // 비디오 재생 함수 (한 번만 재생)
+        function playVideo(videoSrc) {
+            // 비디오 요소 생성
+            const video = document.createElement('video');
+            video.src = videoSrc;
+            video.autoplay = true;
+            video.loop = false; // 반복 재생하지 않도록 설정
+            video.muted = false; // 음소거 설정(ture = 음소거)
+            video.style.position = 'fixed';
+            video.style.top = '0';
+            video.style.left = '0';
+            video.style.width = '100vw';
+            video.style.height = '100vh';
+            video.style.objectFit = 'cover';
+            video.style.zIndex = '-1'; // 페이지 컨텐츠 뒤로 숨김
+            document.body.appendChild(video);
+
+            // 비디오 재생이 끝나면 요소 제거
+            video.addEventListener('ended', () => {
+                document.body.removeChild(video);
+                // 로고 보이기
+                document.getElementById('logo').style.display = 'block';
+                // 웹캠 보이기
+                document.getElementById('webcam-container').style.display = 'block';
+                // 웹캠 기능 재개
+                webcamPaused = false;
+            });
+        }
+
+
+        // 오디오 레이블을 표시하는 함수
+        function displayAudioLabel(currentClassName) {
+            switch (currentClassName) {
+                case 'Malevolent shrine':
+                    explainContainer.childNodes[0].innerHTML = "<b>복마어주자(伏魔御廚子)</b>, 료멘스쿠나의 영역.<br>다른 영역과는 달리 결계로 공간을 분단하지 않는다.<br>최대 반경 약 200m내에서 주력을 띈 존재에게는 팔(捌), 주력을 없는 존재에게는 해(解)가 쏟아진다.";
+                    // (오디오 시간ms) 후에 내용을 비우는 함수 호출
+                    setTimeout(clearExplainContainer, 47000);
+                    break;
+                case 'Infinite void':
+                    explainContainer.childNodes[0].innerHTML = "<b>무량공처(無量空処)</b>, 고죠 사토루의 영역.<br>영역 내 모든 존재에게 1초당 약 2년 반 분량의 정보를 강제 주입시킨다.";
+                    setTimeout(clearExplainContainer, 51000);
+                    break;
+                case 'Chimera Shadow Garden':
+                    explainContainer.childNodes[0].innerHTML = "<b>감합암예정(嵌合暗翳庭)</b>, 후시구로 메구미의 영역.<br>영역 내를 자신의 그림자로 뒤덮어 제한없이 무수한 식신을 끌어낸다.";
+                    setTimeout(clearExplainContainer, 45000);
+                    break;
+                case 'Coffin of the Iron Mountain':
+                    explainContainer.childNodes[0].innerHTML = "<b>개관철위산(蓋棺鉄囲山)</b>, 특급 주령 죠고의 영역.<br>필중 효과만 존재한다.";
+                    setTimeout(clearExplainContainer, 56000);
+                    break;
+                case 'Self-Embodiment of Perfection 01':
+                    explainContainer.childNodes[0].innerHTML = "<b>자폐원돈과(自閉円頓裹)</b>, 특급 주령 마히토의 영역.<br>필중 효과만 존재한다.";
+                    setTimeout(clearExplainContainer, 42000);
+                    break;
+                case 'Self-Embodiment of Perfection 02':
+                    explainContainer.childNodes[0].innerHTML = "<b>자폐원돈과(自閉円頓裹)</b>, 특급 주령 마히토의 영역.<br>필중 효과만 존재한다.";
+                    setTimeout(clearExplainContainer, 41000);
+                    break;
+                case 'Death Swarm':
+                    explainContainer.childNodes[0].innerHTML = "<b>사루루용군(死累累湧軍)</b>, 특급 주령 다곤의 술식.<br>물고기 형태의 식신을 소환한다.";
+                    setTimeout(clearExplainContainer, 55000);
+                    break;
+                case 'Mahoraga':
+                    explainContainer.childNodes[0].innerHTML = "<b>팔악검 이계신장 마허라(八握剣 異戒神将 魔虚羅)</b>, 최강 최악의 식신.<br>후루베 유라유라(布留部 由良由良)라는 주사(呪詞)로 소환한다.";
+                    setTimeout(clearExplainContainer, 60000);
+                    break;
+                default:
+                    break;
+            }
+
+        }
+
+        // 일정 시간 후에 explainContainer 내용을 비우는 함수
+        function clearExplainContainer() {
+            explainContainer.childNodes[0].innerHTML = "";
+        }
+
+        // "다시 시작" 버튼 이벤트 처리
+        document.getElementById('restartButton').onclick = function () {
+            // 모든 오디오 제거
+            const allAudio = document.querySelectorAll('audio');
+            allAudio.forEach(audio => {
+                audio.pause();
+                audio.currentTime = 0;
+                audio.parentNode.removeChild(audio);
+            });
+
+            // 비디오 제거
+            const allVideos = document.querySelectorAll('video');
+            allVideos.forEach(video => video.remove());
+
+            // 웹캠 재시작
+            webcamPaused = false;
+
+            // 현재 클래스 초기화
+            currentAudioClass = '';
+
+            // 설명 초기화
+            explainContainer.childNodes[0].innerHTML = '';
+
+            // 레이블 초기화
+            labelContainer.childNodes[0].innerHTML = "알맞은 장인(掌印)을 맺어 영역을 전개하세요!";
+
+            // 로고 보이게 설정
+            document.getElementById('logo').style.display = 'block';
+
+            // 웹캠 보이게 설정
+            document.getElementById('webcam-container').style.display = 'block';
+        };
+
+    </script>
+</body>
+</html>
